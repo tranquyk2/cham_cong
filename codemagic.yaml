@@ -1,0 +1,9 @@
+workflows:
+  ios-workflow:
+    name: iOS Build
+    instance_type: mac_mini
+    environment:
+      flutter: stable
+    script:
+      - flutter pub get
+      - flutter build ios --no-codesign
