@@ -1,0 +1,358 @@
+====================================================
+SPEC APP CHẤM CÔNG iOS - DÀNH CHO AI CODE
+Version 2.2 — Chỉ iOS, Widget tương tác iOS 17+
+====================================================
+
+TỔNG QUAN
+---------
+Tên app: Chấm Công
+Nền tảng: iOS ONLY (Flutter/Dart + Swift cho Widget)
+Giao diện: Cupertino (iOS native style) — KHÔNG dùng Material/Android
+Lưu trữ: Local (shared_preferences + App Group để Widget đọc được)
+Mục đích: Nhắc nhở chấm công thủ công, tránh quên chấm
+Nguyên tắc cốt lõi: App KHÔNG tự động chấm công, chỉ nhắc nhở.
+                     Người dùng BẮT BUỘC bấm tay để chấm.
+
+
+====================================================
+GIAO DIỆN — iOS NATIVE STYLE
+====================================================
+
+Toàn bộ UI dùng Cupertino widgets của Flutter:
+  - CupertinoApp (không dùng MaterialApp)
+  - CupertinoTabScaffold + CupertinoTabBar (2 tab)
+  - CupertinoNavigationBar (thanh tiêu đề)
+  - CupertinoButton (nút bấm)
+  - CupertinoSwitch (toggle)
+  - CupertinoTimerPicker / CupertinoDatePicker (chọn giờ)
+  - CupertinoAlertDialog (hộp thoại)
+  - CupertinoListSection + CupertinoListTile (danh sách cài đặt)
+  - Font mặc định iOS (SF Pro)
+  - Màu sắc theo iOS: trắng, xám nhạt, xanh iOS (#007AFF)
+
+
+====================================================
+CẤU TRÚC APP — 2 TAB
+====================================================
+
+TAB 1: CHẤM CÔNG (icon: clock)
+-------------------------------
+Giao diện:
+  - Tiêu đề: "Chấm Công" (CupertinoNavigationBar)
+  - Hiển thị ngày, thứ hôm nay (ví dụ: "Thứ Hai, 29/03/2026")
+  - Card trạng thái lớn ở giữa màn hình, 1 trong 3 trạng thái:
+      + "Chưa vào ca" — icon xám, nền xám nhạt
+      + "Đang làm việc" — icon xanh lá, nền xanh nhạt, hiện giờ vào + đã làm X giờ Y phút
+      + "Đã ra về" — icon xanh dương, nền xanh nhạt, hiện giờ vào + giờ ra + tổng giờ
+  - Ghi chú tự động nếu có: "Tăng ca" (vàng) hoặc "Quên chấm ra" (đỏ)
+  - Nút CHẤM VÀO (CupertinoButton, to, xanh iOS) — chỉ hiện khi chưa chấm vào
+  - Nút CHẤM RA (CupertinoButton, to, đỏ) — chỉ hiện khi đã chấm vào, chưa chấm ra
+  - Danh sách 7 ngày gần nhất bên dưới:
+      + Mỗi dòng: ngày | giờ vào | giờ ra | tổng giờ | ghi chú
+      + Màu xanh lá: đủ giờ
+      + Màu đỏ: thiếu giờ hoặc quên chấm
+      + Màu vàng: tăng ca
+
+
+TAB 2: CÀI ĐẶT (icon: gear)
+-----------------------------
+Dùng CupertinoListSection với các nhóm:
+
+NHÓM 1 — VỊ TRÍ CÔNG TY
+  [Nút] "Lấy vị trí hiện tại làm vị trí công ty"
+    → Khi bấm:
+      1. Hiện CupertinoAlertDialog xin xác nhận
+      2. Gọi permission_handler xin quyền location "Always"
+         - Nếu chưa cấp: mở dialog giải thích rõ lý do cần quyền
+           "App cần quyền truy cập vị trí để nhắc chấm công khi bạn đến/rời công ty"
+         - Sau đó mở Settings iOS để người dùng cấp quyền
+      3. Nếu đã có quyền: dùng geolocator lấy tọa độ GPS hiện tại
+      4. Lưu tọa độ (lat, lng) vào shared_preferences
+      5. Hiện thông báo xác nhận: "Đã lưu vị trí công ty"
+  [Hiển thị] Tọa độ đã lưu: "Lat: 10.7769, Lng: 106.7009"
+  [Hiển thị] Địa chỉ gần nhất (dùng geocoding nếu có thể)
+
+NHÓM 2 — KHOẢNG CÁCH NHẮC NHỞ
+  [Input] Bán kính nhắc chấm VÀO: ___ mét (mặc định 100)
+  [Input] Bán kính nhắc chấm RA: ___ mét (mặc định 200)
+
+NHÓM 3 — GIỜ LÀM VIỆC
+  [TimePicker] Giờ vào làm chuẩn (mặc định 08:00)
+  [TimePicker] Giờ tan làm chuẩn (mặc định 17:30)
+
+NHÓM 4 — TÙY CHỌN
+  [CupertinoSwitch] Bỏ qua cuối tuần (mặc định: bật)
+  [CupertinoSwitch] Bật thông báo nhắc chấm công (mặc định: bật)
+
+NHÓM 5 — HƯỚNG DẪN THÊM WIDGET
+  [Cell] "Cách thêm Widget lên màn hình home" 
+    → Bấm vào hiện CupertinoAlertDialog hướng dẫn:
+      "1. Giữ màn hình home cho đến khi các app rung
+       2. Bấm dấu + góc trên bên trái
+       3. Tìm kiếm 'Chấm Công'
+       4. Chọn widget và bấm 'Thêm Widget'"
+
+
+====================================================
+LOGIC THÔNG BÁO — 3 TRIGGER
+====================================================
+
+TRIGGER 1: ĐẾN GẦN CÔNG TY
+---------------------------
+Điều kiện:
+  - GPS vào trong vùng bán kính nhắc vào
+  - Chưa chấm vào hôm nay
+  - Không phải cuối tuần (nếu cài bỏ qua cuối tuần)
+  - Chưa gửi trigger 1 hôm nay
+
+Thông báo: "Bạn đã đến công ty, nhớ chấm công vào nhé! 👋"
+Bấm vào → mở Tab 1
+
+
+TRIGGER 2: ĐẾN GIỜ TAN LÀM + CHƯA CHẤM RA
+-------------------------------------------
+Điều kiện:
+  - Đúng giờ tan làm cài đặt
+  - Đã chấm vào nhưng chưa chấm ra
+  - Chưa gửi trigger 2 hôm nay
+
+Nếu VẪN TRONG khu vực công ty:
+  → Thông báo: "Đã đến giờ tan làm. Bạn vẫn đang ở công ty — đang tăng ca? Nhớ chấm ra khi về nhé! ⏰"
+  → Ghi chú tạm "Tăng ca" vào record hôm nay
+
+Nếu ĐÃ RA NGOÀI khu vực:
+  → Thông báo: "Đã đến giờ tan làm. Có vẻ bạn đã về mà quên chấm ra! Mở app để chấm bổ sung. 🏃"
+  → Ghi chú tạm "Quên chấm ra" vào record hôm nay
+
+
+TRIGGER 3: RA KHỎI KHU VỰC CÔNG TY + CHƯA CHẤM RA
+----------------------------------------------------
+Điều kiện:
+  - GPS vượt ra ngoài bán kính nhắc ra
+  - Đã chấm vào nhưng chưa chấm ra
+  - Chưa gửi trigger 3 hôm nay
+
+Thông báo: "Bạn vừa rời công ty mà chưa chấm ra! Bấm để mở app chấm ngay. 🚨"
+Bấm vào → mở Tab 1
+
+Chống spam: chỉ gửi 1 lần/ngày cho mỗi trigger
+
+
+====================================================
+WIDGET iOS (WidgetKit — Swift)
+====================================================
+
+QUAN TRỌNG: Widget iOS phải viết bằng Swift (WidgetKit),
+không thể dùng Flutter thuần. Cần tạo iOS Widget Extension
+trong Xcode và dùng App Group để chia sẻ dữ liệu với Flutter.
+
+Cách chia sẻ dữ liệu Flutter → Widget:
+  - Tạo App Group: "group.com.yourname.chamcong"
+  - Flutter lưu dữ liệu vào UserDefaults của App Group
+    (dùng package: home_widget ^0.4.0)
+  - Swift Widget đọc từ UserDefaults cùng App Group
+
+Dữ liệu Widget cần đọc:
+  - check_in: String? (giờ chấm vào hôm nay)
+  - check_out: String? (giờ chấm ra hôm nay)
+  - status: String ("none" / "working" / "done")
+  - note: String? ("Tăng ca" / "Quên chấm ra" / "")
+  - total_hours: String? (tổng giờ làm)
+
+Giao diện Widget (viết bằng SwiftUI):
+
+  Kích thước hỗ trợ: .systemSmall và .systemMedium
+
+  Small Widget (2x2):
+  ┌─────────────────┐
+  │ Chấm Công       │
+  │                 │
+  │ ● Đang làm      │
+  │ Vào: 08:30      │
+  │ Đã làm: 4g 15p  │
+  └─────────────────┘
+
+  Medium Widget (4x2):
+  ┌───────────────────────────────┐
+  │ Chấm Công        29/03/2026   │
+  │                               │
+  │ ● Đang làm việc               │
+  │ Vào: 08:30   Đã làm: 4g 15p  │
+  └───────────────────────────────┘
+
+  4 trạng thái hiển thị:
+  1. Chưa vào ca → nền xám, chữ "Chưa chấm công hôm nay"
+  2. Đang làm → nền xanh nhạt, giờ vào + đã làm bao lâu
+  3. Đã về → nền trắng, giờ vào + giờ ra + tổng giờ
+  4. Tăng ca / Quên chấm → nền vàng/đỏ nhạt + ghi chú
+
+  Tương tác Widget — 2 trường hợp:
+
+  iOS 17+ (Interactive Widget):
+    - Hiện nút "CHẤM VÀO" hoặc "CHẤM RA" ngay trên widget
+    - Dùng AppIntent (Swift) để xử lý logic chấm công
+    - Sau khi bấm → ghi dữ liệu vào App Group → reload widget
+    - KHÔNG cần mở app, chấm xong widget tự cập nhật luôn
+    - Nếu chưa cài vị trí công ty → bấm widget mở app thay vì chấm
+
+  iOS 16 trở xuống (fallback):
+    - Bấm vào widget → mở app vào Tab 1
+    - Người dùng chấm tay trong app như bình thường
+
+  Cách phát hiện iOS version trong Swift:
+    if #available(iOS 17.0, *) {
+      // Hiện nút Interactive
+    } else {
+      // Chỉ hiện thông tin, bấm mở app
+    }
+
+  Refresh Widget:
+  - Mỗi khi chấm công (trong app hoặc qua widget) → gọi
+    WidgetCenter.shared.reloadAllTimelines()
+  - Widget tự refresh mỗi 15 phút (Timeline policy: .atEnd)
+  - AppIntent sau khi chạy xong → gọi reload widget luôn
+
+
+====================================================
+QUYỀN CẦN XIN (iOS)
+====================================================
+
+Info.plist:
+  NSLocationAlwaysAndWhenInUseUsageDescription
+    = "App cần quyền vị trí để nhắc bạn chấm công khi đến và rời công ty"
+  NSLocationWhenInUseUsageDescription
+    = "App cần quyền vị trí để lấy tọa độ công ty"
+  UIBackgroundModes
+    = location, fetch
+
+Luồng xin quyền lần đầu mở app (theo thứ tự):
+
+  BƯỚC 1 — Màn hình giới thiệu (Onboarding):
+    - Hiện màn hình giải thích app cần 2 quyền: Vị trí + Thông báo
+    - Giải thích rõ lý do từng quyền
+    - Nút "Bắt đầu thiết lập"
+
+  BƯỚC 2 — Xin quyền THÔNG BÁO:
+    - Hiện dialog giải thích trước:
+      "App cần gửi thông báo để nhắc bạn chấm công đúng giờ.
+       Vui lòng chọn 'Cho phép' ở bước tiếp theo."
+    - Gọi permission_handler xin quyền notification
+      (UNUserNotificationCenter.requestAuthorization)
+    - Xin các quyền: alert, badge, sound
+    - Nếu từ chối → hiện hướng dẫn:
+      "Vào Cài đặt → Chấm Công → Thông báo → Bật lên"
+    - Nút "Mở Cài đặt" → openAppSettings()
+
+  BƯỚC 3 — Xin quyền VỊ TRÍ:
+    - Hiện dialog giải thích trước:
+      "App cần quyền vị trí để tự động nhắc khi bạn đến
+       hoặc rời công ty. Vui lòng chọn 'Cho phép' ở bước tiếp theo."
+    - Xin "When In Use" trước
+    - Sau đó xin "Always Allow"
+    - Nếu từ chối → hiện hướng dẫn:
+      "Vào Cài đặt → Chấm Công → Vị trí → Chọn 'Luôn luôn'"
+    - Nút "Mở Cài đặt" → openAppSettings()
+
+  BƯỚC 4 — Hoàn tất:
+    - Hiện màn hình xác nhận các quyền đã cấp
+    - Nút "Bắt đầu dùng app"
+
+Kiểm tra quyền mỗi khi mở app:
+  - Nếu thiếu quyền nào → hiện banner cảnh báo trên Tab Cài đặt
+  - Banner: "⚠️ App thiếu quyền [Thông báo / Vị trí] — Bấm để cấp"
+  - Bấm vào banner → mở Settings
+
+Trạng thái quyền hiển thị trong Tab Cài đặt (NHÓM 0 — ĐẦU TIÊN):
+  NHÓM 0 — QUYỀN TRUY CẬP
+  [Cell] Thông báo: ✅ Đã cấp / ⚠️ Chưa cấp → bấm để cấp
+  [Cell] Vị trí: ✅ Luôn luôn / ⚠️ Chỉ khi dùng / ❌ Từ chối → bấm để cấp
+
+
+====================================================
+DỮ LIỆU CẦN LƯU
+====================================================
+
+shared_preferences (Flutter):
+  - company_lat: double
+  - company_lng: double
+  - company_address: string
+  - radius_in: int (mét, mặc định 100)
+  - radius_out: int (mét, mặc định 200)
+  - work_start: string ("HH:mm", mặc định "08:00")
+  - work_end: string ("HH:mm", mặc định "17:30")
+  - skip_weekend: bool (mặc định true)
+  - notifications_enabled: bool (mặc định true)
+  - trigger1_sent_date: string (ngày đã gửi)
+  - trigger2_sent_date: string
+  - trigger3_sent_date: string
+
+Record chấm công (key = "record_YYYY-MM-DD"):
+  - check_in: string hoặc null
+  - check_out: string hoặc null
+  - note: string ("" / "Tăng ca" / "Quên chấm ra")
+
+UserDefaults App Group (cho Widget đọc):
+  - widget_status: string
+  - widget_check_in: string
+  - widget_check_out: string
+  - widget_total: string
+  - widget_note: string
+  - widget_date: string
+
+
+====================================================
+PACKAGES FLUTTER CẦN DÙNG
+====================================================
+
+dependencies:
+  flutter:
+    sdk: flutter
+  geolocator: ^11.0.0
+  flutter_local_notifications: ^17.0.0
+  shared_preferences: ^2.0.0
+  permission_handler: ^11.0.0
+  workmanager: ^0.5.0
+  home_widget: ^0.4.0
+  intl: ^0.19.0
+
+
+====================================================
+CẤU TRÚC THƯ MỤC PROJECT
+====================================================
+
+lib/
+  main.dart                  (CupertinoApp, 2 tab)
+  screens/
+    tab_checkin.dart         (Tab chấm công)
+    tab_settings.dart        (Tab cài đặt)
+  services/
+    location_service.dart    (GPS, geofencing)
+    notification_service.dart (gửi thông báo)
+    storage_service.dart     (đọc/ghi dữ liệu)
+    widget_service.dart      (cập nhật widget)
+  models/
+    record.dart              (model dữ liệu ngày công)
+
+ios/
+  Runner/
+    Info.plist               (thêm quyền GPS)
+  ChamCongWidget/            (Widget Extension — Swift)
+    ChamCongWidget.swift     (SwiftUI widget)
+    Info.plist
+  Runner.xcodeproj/
+
+
+====================================================
+LƯU Ý QUAN TRỌNG KHI CODE
+====================================================
+
+1. Dùng CupertinoApp, KHÔNG dùng MaterialApp
+2. GPS background: cần "Always Allow" để nhắc khi app đóng
+3. Widget Extension phải cùng App Group với app chính
+4. Mỗi khi chấm công → cập nhật UserDefaults App Group → gọi reload widget
+5. workmanager dùng để trigger đúng giờ tan làm dù app đóng
+6. Chống spam: luôn check trigger_sent_date trước khi gửi thông báo
+7. Reset trigger mỗi ngày: kiểm tra ngày hiện tại vs ngày đã lưu
+8. Build bằng Codemagic (iOS only, cần certificate + provisioning profile)
+
+====================================================
