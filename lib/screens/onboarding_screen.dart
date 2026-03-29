@@ -1,5 +1,5 @@
 import 'package:flutter/cupertino.dart';
-import 'dart:io' show Platform;
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:permission_handler/permission_handler.dart' as perm;
 import '../services/storage_service.dart';
 import '../services/notification_service.dart';
@@ -306,7 +306,7 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
 
     try {
       // On web platform, skip permission request
-      if (!Platform.isIOS && !Platform.isAndroid) {
+      if (kIsWeb) {
         setState(() {
           _currentStep = 2;
           _isLoading = false;
@@ -356,7 +356,7 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
 
     try {
       // On web platform, skip permission request
-      if (!Platform.isIOS && !Platform.isAndroid) {
+      if (kIsWeb) {
         setState(() {
           _currentStep = 3;
           _isLoading = false;
