@@ -9,6 +9,13 @@ workflows:
       - name: Flutter build
         script: |
           flutter pub get
-          flutter build ios --simulator
+          flutter build ios --no-codesign
+      - name: Create IPA
+        script: |
+          cd build/ios/Release-iphoneos
+          mkdir -p Payload
+          cp -r Runner.app Payload
+          zip -r app.ipa Payload
+          mv app.ipa ../../../
     artifacts:
-      - build/ios/Release-iphonesimulator/*.app
+      - app.ipa
