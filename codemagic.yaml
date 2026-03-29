@@ -5,5 +5,5 @@ workflows:
     environment:
       flutter: stable
     script:
-      - flutter pub get
-      - flutter build ios --no-codesign
+      - name: Flutter build
+        script: flutter build ios --no-codesign
